@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/pixel_art_admins/$(request.auth.uid));
+    }
+
+    // Pixel art content + config: public read (the mobile apps read this
+    // unauthenticated), admin-only write.
+    match /pixel_art/{flavor} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      // Anonymous per-art completion counters reported by the apps. The only
+      // shape allowed is a single integer `completions` field, so the public
+      // write surface stays as narrow as possible.
+      match /stats/{artId} {
+        allow read: if true;
+        allow write: if isAdmin()
+          || (request.resource.data.keys().hasOnly(['completions'])
+              && request.resource.data.completions is int
+              && request.resource.data.completions
+                  > (resource == null ? 0 : resource.data.completions));
+      }
+
+      match /{sub}/{doc} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    // Admin allowlist: a signed-in user may check their own entry; writes
+    // only via the Firebase console.
+    match /pixel_art_admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // NOTE: the Firebase project om108-5c015 is shared with other apps.
+    // If other apps already use Firestore with their own rules, merge those
+    // match blocks into this file before deploying — `firebase deploy
+    // --only firestore:rules` REPLACES the entire ruleset.
+  }
+}
