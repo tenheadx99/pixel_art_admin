@@ -38,9 +38,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // NOTE: the Firebase project om108-5c015 is shared with other apps.
-    // If other apps already use Firestore with their own rules, merge those
-    // match blocks into this file before deploying — `firebase deploy
-    // --only firestore:rules` REPLACES the entire ruleset.
+    // Legacy behavior for the OTHER apps in this shared project: before this
+    // file was deployed, the project-wide rule was
+    //   allow read, write: if request.auth != null;
+    // Keep that for every collection EXCEPT the pixel_art namespaces above,
+    // so nothing else in om108-5c015 changes behavior. (Any-allow-wins:
+    // without the exclusion this rule would defeat the admin allowlist.)
+    match /{collection}/{document=**} {
+      allow read, write: if request.auth != null
+        && collection != 'pixel_art'
+        && collection != 'pixel_art_admins';
+    }
   }
 }
