@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/models/pixel_art.dart';
@@ -58,6 +60,8 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
   static const _gridSizes = [16, 24, 32, 48, 64, 96, 128];
   int _gridSize = 32;
   double _maxColors = 16;
+  double _brightness = 0.0;
+  double _contrast = 0.0;
   int _difficulty = 1;
   bool _isPremium = false;
   bool _publishAsDraft = false;
@@ -158,10 +162,50 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
       gridSize: _gridSize,
       maxColors: _maxColors.round(),
       cropRect: item.cropRect,
+      brightness: _brightness,
+      contrast: _contrast,
       category: _category.text.trim().isEmpty ? 'General' : _category.text.trim(),
       difficulty: _difficulty,
       isPremium: _isPremium,
       removeWhiteBackground: _removeWhiteBg,
+    );
+  }
+
+  void _exportJsonDialog() {
+    final preview = _preview;
+    if (preview == null) return;
+    final jsonString = const JsonEncoder.withIndent('  ').convert(preview.toJson());
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('JSON Artwork Spec — ${preview.name}'),
+        content: SizedBox(
+          width: 540,
+          height: 360,
+          child: SelectableText(
+            jsonString,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.copy_rounded),
+            label: const Text('Copy JSON'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: jsonString));
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('JSON copied to clipboard')),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -365,6 +409,30 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
             _scheduleConvert();
           },
         ),
+        Text('Brightness adjustment: ${(_brightness * 100).round()}%'),
+        Slider(
+          value: _brightness,
+          min: -0.5,
+          max: 0.5,
+          divisions: 20,
+          label: '${(_brightness * 100).round()}%',
+          onChanged: (v) {
+            setState(() => _brightness = v);
+            _scheduleConvert();
+          },
+        ),
+        Text('Contrast adjustment: ${(_contrast * 100).round()}%'),
+        Slider(
+          value: _contrast,
+          min: -0.5,
+          max: 0.5,
+          divisions: 20,
+          label: '${(_contrast * 100).round()}%',
+          onChanged: (v) {
+            setState(() => _contrast = v);
+            _scheduleConvert();
+          },
+        ),
         Row(
           children: [
             const Text('Difficulty:'),
@@ -407,17 +475,28 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
           onChanged: (v) => setState(() => _publishAsDraft = v),
         ),
         const SizedBox(height: 8),
-        FilledButton.icon(
-          onPressed:
-              (_queue.isEmpty || _converting || _publishing)
-                  ? null
-                  : _publishAll,
-          icon: const Icon(Icons.cloud_upload_rounded),
-          label: Text(_publishing
-              ? 'Publishing…'
-              : _queue.length > 1
-                  ? 'Publish ${_queue.length} to ${flavor.displayName}'
-                  : 'Publish to ${flavor.displayName}'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed:
+                  (_queue.isEmpty || _converting || _publishing)
+                      ? null
+                      : _publishAll,
+              icon: const Icon(Icons.cloud_upload_rounded),
+              label: Text(_publishing
+                  ? 'Publishing…'
+                  : _queue.length > 1
+                      ? 'Publish ${_queue.length} to ${flavor.displayName}'
+                      : 'Publish to ${flavor.displayName}'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _preview == null ? null : _exportJsonDialog,
+              icon: const Icon(Icons.code_rounded),
+              label: const Text('Export JSON'),
+            ),
+          ],
         ),
       ],
     );

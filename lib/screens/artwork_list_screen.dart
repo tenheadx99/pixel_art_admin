@@ -32,8 +32,12 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
   Map<String, int> _stats = const {};
   String? _error;
   String _categoryFilter = 'All';
+  String _statusFilter = 'All';
+  String _searchQuery = '';
   bool _reorderMode = false;
   bool _orderDirty = false;
+  bool _batchMode = false;
+  final Set<String> _selectedArtIds = {};
 
   String get _flavorId => context.read<AdminState>().flavor.id;
 
@@ -52,11 +56,109 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
         setState(() {
           _entries = entries;
           _stats = stats;
+          _selectedArtIds.clear();
         });
       }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
+  }
+
+  Future<void> _bulkHide(bool hide) async {
+    final catalog = context.read<CatalogService>();
+    final selectedEntries =
+        _entries?.where((e) => _selectedArtIds.contains(e.art.id)).toList() ?? [];
+    if (selectedEntries.isEmpty) return;
+
+    await _run(() async {
+      for (final entry in selectedEntries) {
+        if (entry.isBundled) {
+          final o = entry.override;
+          await catalog.saveOverride(
+            _flavorId,
+            ArtworkOverride(
+              artId: entry.art.id,
+              hidden: hide ? true : null,
+              isPremium: o?.isPremium,
+              category: o?.category,
+              sortOrder: o?.sortOrder,
+            ),
+          );
+        } else {
+          await catalog.updateRemote(_flavorId, entry.art.id, {'visible': !hide});
+        }
+      }
+    });
+    setState(() => _selectedArtIds.clear());
+  }
+
+  Future<void> _bulkSetPremium(bool premium) async {
+    final catalog = context.read<CatalogService>();
+    final selectedEntries =
+        _entries?.where((e) => _selectedArtIds.contains(e.art.id)).toList() ?? [];
+    if (selectedEntries.isEmpty) return;
+
+    await _run(() async {
+      for (final entry in selectedEntries) {
+        if (entry.isBundled) {
+          final o = entry.override;
+          await catalog.saveOverride(
+            _flavorId,
+            ArtworkOverride(
+              artId: entry.art.id,
+              hidden: o?.hidden,
+              isPremium: premium == entry.art.isPremium ? null : premium,
+              category: o?.category,
+              sortOrder: o?.sortOrder,
+            ),
+          );
+        } else {
+          await catalog.updateRemote(_flavorId, entry.art.id, {'isPremium': premium});
+        }
+      }
+    });
+    setState(() => _selectedArtIds.clear());
+  }
+
+  Future<void> _bulkDeleteRemote() async {
+    final catalog = context.read<CatalogService>();
+    final selectedRemote = _entries
+            ?.where((e) => !e.isBundled && _selectedArtIds.contains(e.art.id))
+            .toList() ??
+        [];
+    if (selectedRemote.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete ${selectedRemote.length} Remote Artworks?'),
+        content: Text(
+          'Are you sure you want to delete ${selectedRemote.length} remote artwork(s)? '
+          'This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete All Selected'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await _run(() async {
+      for (final entry in selectedRemote) {
+        await catalog.deleteRemote(_flavorId, entry.art.id);
+      }
+    });
+    setState(() => _selectedArtIds.clear());
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -350,9 +452,7 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
         const SnackBar(content: Text('Order saved')),
       );
     }
-  }
-
-  @override
+   @override
   Widget build(BuildContext context) {
     final flavor = context.watch<AdminState>().flavor;
     final isMobile = MediaQuery.of(context).size.width < 768;
@@ -366,9 +466,29 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
     }
 
     final categories = {'All', ...entries.map((e) => e.category)}.toList();
-    final visible = _reorderMode || _categoryFilter == 'All'
+    final statuses = ['All', 'Bundled', 'Remote', 'Drafts', 'Hidden', 'Premium', 'Free'];
+
+    final visible = _reorderMode
         ? entries
-        : entries.where((e) => e.category == _categoryFilter).toList();
+        : entries.where((e) {
+            if (_categoryFilter != 'All' && e.category != _categoryFilter) {
+              return false;
+            }
+            if (_searchQuery.isNotEmpty) {
+              final query = _searchQuery.toLowerCase();
+              final matchesName = e.art.name.toLowerCase().contains(query);
+              final matchesId = e.art.id.toLowerCase().contains(query);
+              if (!matchesName && !matchesId) return false;
+            }
+            final isDraft = !e.isBundled && !e.remote!.visible;
+            if (_statusFilter == 'Bundled' && !e.isBundled) return false;
+            if (_statusFilter == 'Remote' && e.isBundled) return false;
+            if (_statusFilter == 'Drafts' && !isDraft) return false;
+            if (_statusFilter == 'Hidden' && !e.hidden) return false;
+            if (_statusFilter == 'Premium' && !e.isPremium) return false;
+            if (_statusFilter == 'Free' && e.isPremium) return false;
+            return true;
+          }).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -376,78 +496,184 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
         Padding(
           padding: EdgeInsets.fromLTRB(
               isMobile ? 16 : 24, isMobile ? 16 : 24, isMobile ? 16 : 24, 0),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${flavor.displayName} — artworks (${entries.length})',
-                style: isMobile
-                    ? Theme.of(context).textTheme.titleLarge
-                    : Theme.of(context).textTheme.headlineSmall,
-              ),
-              if (_reorderMode) ...[
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: _orderDirty ? _saveOrder : null,
-                      icon: const Icon(Icons.save_rounded),
-                      label: const Text('Save order'),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    '${flavor.displayName} — artworks (${entries.length})',
+                    style: isMobile
+                        ? Theme.of(context).textTheme.titleLarge
+                        : Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  if (_reorderMode) ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: _orderDirty ? _saveOrder : null,
+                          icon: const Icon(Icons.save_rounded),
+                          label: const Text('Save order'),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton(
+                          onPressed: () {
+                            setState(() {
+                              _reorderMode = false;
+                              _orderDirty = false;
+                            });
+                            _load(); // Discard unsaved moves.
+                          },
+                          child: const Text('Cancel'),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    OutlinedButton(
-                      onPressed: () {
-                        setState(() {
-                          _reorderMode = false;
-                          _orderDirty = false;
-                        });
-                        _load(); // Discard unsaved moves.
-                      },
-                      child: const Text('Cancel'),
+                  ] else ...[
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => setState(() => _batchMode = !_batchMode),
+                          icon: Icon(
+                            _batchMode
+                                ? Icons.check_box_outlined
+                                : Icons.library_add_check_rounded,
+                            color: _batchMode ? Colors.amber : null,
+                          ),
+                          label: Text(_batchMode ? 'Done Batch' : 'Batch Select'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: entries.isEmpty
+                              ? null
+                              : () => setState(() => _reorderMode = true),
+                          icon: const Icon(Icons.swap_vert_rounded),
+                          label: Text(isMobile ? 'Reorder' : 'Reorder catalog'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: _uploadJson,
+                          icon: const Icon(Icons.upload_file_rounded),
+                          label: const Text('Upload JSON'),
+                        ),
+                        IconButton(
+                          tooltip: 'Reload',
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh_rounded),
+                        ),
+                      ],
                     ),
                   ],
-                ),
-              ] else ...[
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                ],
+              ),
+              if (!_reorderMode) ...[
+                const SizedBox(height: 12),
+                // Search bar and Category filter row
+                Row(
                   children: [
+                    Expanded(
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Search by artwork name or ID...',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onChanged: (val) => setState(() => _searchQuery = val),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     DropdownButton<String>(
                       value: _categoryFilter,
                       items: [
                         for (final c in categories)
-                          DropdownMenuItem(value: c, child: Text(c)),
+                          DropdownMenuItem(value: c, child: Text('Category: $c')),
                       ],
                       onChanged: (c) =>
                           setState(() => _categoryFilter = c ?? 'All'),
                     ),
-                    OutlinedButton.icon(
-                      onPressed: entries.isEmpty
-                          ? null
-                          : () => setState(() => _reorderMode = true),
-                      icon: const Icon(Icons.swap_vert_rounded),
-                      label: Text(isMobile ? 'Reorder' : 'Reorder catalog'),
-                    ),
-                    FilledButton.icon(
-                      onPressed: _uploadJson,
-                      icon: const Icon(Icons.upload_file_rounded),
-                      label: const Text('Upload JSON'),
-                    ),
-                    IconButton(
-                      tooltip: 'Reload',
-                      onPressed: _load,
-                      icon: const Icon(Icons.refresh_rounded),
-                    ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                // Status Filter Chips
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      const Text('Status: ',
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
+                      for (final st in statuses) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6.0),
+                          child: FilterChip(
+                            label: Text(st, style: const TextStyle(fontSize: 12)),
+                            selected: _statusFilter == st,
+                            onSelected: (selected) {
+                              if (selected) setState(() => _statusFilter = st);
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ],
             ],
           ),
         ),
+        if (_batchMode && _selectedArtIds.isNotEmpty) ...[
+          Container(
+            color: Theme.of(context).colorScheme.primaryContainer,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            child: Row(
+              children: [
+                Text(
+                  '${_selectedArtIds.length} Selected',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.visibility_off_rounded, size: 16),
+                      label: const Text('Bulk Hide'),
+                      onPressed: () => _bulkHide(true),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.visibility_rounded, size: 16),
+                      label: const Text('Bulk Show'),
+                      onPressed: () => _bulkHide(false),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.workspace_premium_rounded,
+                          size: 16, color: Colors.amber),
+                      label: const Text('Make Premium'),
+                      onPressed: () => _bulkSetPremium(true),
+                    ),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.error,
+                      ),
+                      icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                      label: const Text('Delete Remote'),
+                      onPressed: _bulkDeleteRemote,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
         if (_reorderMode)
           Padding(
             padding: EdgeInsets.fromLTRB(
@@ -514,6 +740,7 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
     final art = entry.art;
     final completions = _stats[art.id] ?? 0;
     final isDraft = !entry.isBundled && !entry.remote!.visible;
+    final isSelected = _selectedArtIds.contains(art.id);
 
     final actionButtons = [
       IconButton(
@@ -555,26 +782,50 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
       ],
     ];
 
+    final previewTile = Tooltip(
+      message: 'Tap to view enlarged artwork',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => ArtworkPreviewDialog.show(
+          context,
+          art: art,
+          gemStyle: gemStyle,
+          subtitle:
+              '${entry.isBundled ? "Bundled Catalog" : "Remote Catalog"} • ${entry.category}',
+        ),
+        child: ArtPreview(
+            art: art, gemStyle: gemStyle, size: isMobile ? 44 : 56),
+      ),
+    );
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
+      color: isSelected
+          ? Theme.of(context).colorScheme.primaryContainer.withAlpha(80)
+          : null,
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: isMobile ? 4.0 : 0.0),
         child: ListTile(
-          leading: Tooltip(
-            message: 'Tap to view enlarged artwork',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: () => ArtworkPreviewDialog.show(
-                context,
-                art: art,
-                gemStyle: gemStyle,
-                subtitle:
-                    '${entry.isBundled ? "Bundled Catalog" : "Remote Catalog"} • ${entry.category}',
-              ),
-              child: ArtPreview(
-                  art: art, gemStyle: gemStyle, size: isMobile ? 44 : 56),
-            ),
-          ),
+          leading: _batchMode
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: (val) {
+                        setState(() {
+                          if (val == true) {
+                            _selectedArtIds.add(art.id);
+                          } else {
+                            _selectedArtIds.remove(art.id);
+                          }
+                        });
+                      },
+                    ),
+                    previewTile,
+                  ],
+                )
+              : previewTile,
           title: Wrap(
             spacing: 6,
             runSpacing: 4,
@@ -689,7 +940,6 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
       ),
     );
   }
-
 }
 
 class _Badge extends StatelessWidget {

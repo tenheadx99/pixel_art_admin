@@ -35,14 +35,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final catalog = await catalogService.loadCatalog(flavorId);
     final updated = await configService.lastUpdated(flavorId);
 
+    final categoryCounts = <String, int>{};
+    for (final entry in catalog) {
+      categoryCounts[entry.category] = (categoryCounts[entry.category] ?? 0) + 1;
+    }
+
     final version =
         (flavorDoc.data()?[FlavorDocFields.catalogVersion] as num?)?.toInt();
     return _DashboardData(
       catalogVersion: version,
+      totalCount: catalog.length,
       bundledCount: catalog.where((e) => e.isBundled).length,
       remoteCount: catalog.where((e) => !e.isBundled).length,
       hiddenCount: catalog.where((e) => e.hidden).length,
       premiumCount: catalog.where((e) => e.isPremium).length,
+      categoryCounts: categoryCounts,
       configUpdated: updated,
     );
   }
@@ -91,6 +98,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   runSpacing: 12,
                   children: [
                     _StatCard(
+                      label: 'Total Artworks',
+                      value: '${d.totalCount}',
+                      icon: Icons.photo_library_rounded,
+                      width: cardWidth,
+                    ),
+                    _StatCard(
                       label: 'Bundled artworks',
                       value: '${d.bundledCount}',
                       icon: Icons.inventory_2_rounded,
@@ -119,6 +132,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
               },
             ),
             const SizedBox(height: 32),
+            Text('Category Breakdown', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            if (d.categoryCounts.isEmpty)
+              const Text('No catalog categories found.')
+            else
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      for (final entry in d.categoryCounts.entries) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    entry.key,
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    '${entry.value} (${(d.totalCount > 0 ? (entry.value / d.totalCount * 100).round() : 0)}%)',
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              LinearProgressIndicator(
+                                value: d.totalCount > 0 ? entry.value / d.totalCount : 0,
+                                borderRadius: BorderRadius.circular(4),
+                                minHeight: 6,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 32),
             Text('Config docs', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             for (final entry in d.configUpdated.entries)
@@ -142,18 +199,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 class _DashboardData {
   final int? catalogVersion;
+  final int totalCount;
   final int bundledCount;
   final int remoteCount;
   final int hiddenCount;
   final int premiumCount;
+  final Map<String, int> categoryCounts;
   final Map<String, DateTime?> configUpdated;
 
   const _DashboardData({
     required this.catalogVersion,
+    required this.totalCount,
     required this.bundledCount,
     required this.remoteCount,
     required this.hiddenCount,
     required this.premiumCount,
+    required this.categoryCounts,
     required this.configUpdated,
   });
 }

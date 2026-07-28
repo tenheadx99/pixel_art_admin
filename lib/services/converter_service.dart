@@ -26,6 +26,8 @@ class ConverterService {
     required int gridSize,
     required int maxColors,
     Rect? cropRect,
+    double brightness = 0.0,
+    double contrast = 0.0,
     String category = 'General',
     int difficulty = 1,
     bool isPremium = false,
@@ -38,6 +40,13 @@ class ConverterService {
       final cropW = (cropRect.width * source.width).round().clamp(1, source.width - cropX);
       final cropH = (cropRect.height * source.height).round().clamp(1, source.height - cropY);
       source = img.copyCrop(source, x: cropX, y: cropY, width: cropW, height: cropH);
+    }
+    if (brightness != 0.0 || contrast != 0.0) {
+      source = img.adjustColor(
+        source,
+        brightness: 1.0 + brightness,
+        contrast: 1.0 + contrast,
+      );
     }
     if (removeWhiteBackground) {
       source = _stripWhiteBackground(source);
