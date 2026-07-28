@@ -235,247 +235,255 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
   Widget build(BuildContext context) {
     final flavor = context.watch<AdminState>().flavor;
     final preview = _preview;
+    final isMobile = MediaQuery.of(context).size.width < 768;
 
-    return ListView(
-      padding: const EdgeInsets.all(24),
+    final controlsColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '${flavor.displayName} — artwork creator',
-          style: Theme.of(context).textTheme.headlineSmall,
+        OutlinedButton.icon(
+          onPressed: _pickImages,
+          icon: const Icon(Icons.add_photo_alternate_rounded),
+          label: Text(_queue.isEmpty
+              ? 'Choose images (PNG/JPG)'
+              : 'Add more images'),
+        ),
+        if (_queue.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var i = 0; i < _queue.length; i++)
+                InputChip(
+                  label: Text(
+                    _queue[i].name,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  selected: i == _selected,
+                  onSelected: (_) {
+                    setState(() => _select(i));
+                    _scheduleConvert(immediate: true);
+                  },
+                  onDeleted: () {
+                    setState(() {
+                      _queue.removeAt(i);
+                      if (_queue.isEmpty) {
+                        _preview = null;
+                      } else {
+                        _select(_selected.clamp(0, _queue.length - 1));
+                      }
+                    });
+                    if (_queue.isNotEmpty) {
+                      _scheduleConvert(immediate: true);
+                    }
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _nameEditor,
+            decoration: const InputDecoration(
+              labelText: 'Name (selected image)',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (v) => _current?.name = v,
+          ),
+        ],
+        const SizedBox(height: 12),
+        TextField(
+          controller: _category,
+          decoration: const InputDecoration(
+            labelText: 'Category (whole batch)',
+            border: OutlineInputBorder(),
+          ),
         ),
         const SizedBox(height: 16),
+        Text('Grid size (long edge): $_gridSize'),
+        Slider(
+          value: _gridSizes.indexOf(_gridSize).toDouble(),
+          min: 0,
+          max: (_gridSizes.length - 1).toDouble(),
+          divisions: _gridSizes.length - 1,
+          label: '$_gridSize',
+          onChanged: (v) {
+            setState(() => _gridSize = _gridSizes[v.round()]);
+            _scheduleConvert();
+          },
+        ),
+        Text('Max colors: ${_maxColors.round()}'),
+        Slider(
+          value: _maxColors,
+          min: 4,
+          max: 32,
+          divisions: 28,
+          label: '${_maxColors.round()}',
+          onChanged: (v) {
+            setState(() => _maxColors = v);
+            _scheduleConvert();
+          },
+        ),
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Controls column.
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _pickImages,
-                    icon: const Icon(Icons.add_photo_alternate_rounded),
-                    label: Text(_queue.isEmpty
-                        ? 'Choose images (PNG/JPG)'
-                        : 'Add more images'),
-                  ),
-                  if (_queue.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (var i = 0; i < _queue.length; i++)
-                          InputChip(
-                            label: Text(
-                              _queue[i].name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            selected: i == _selected,
-                            onSelected: (_) {
-                              setState(() => _select(i));
-                              _scheduleConvert(immediate: true);
-                            },
-                            onDeleted: () {
-                              setState(() {
-                                _queue.removeAt(i);
-                                if (_queue.isEmpty) {
-                                  _preview = null;
-                                } else {
-                                  _select(_selected.clamp(0, _queue.length - 1));
-                                }
-                              });
-                              if (_queue.isNotEmpty) {
-                                _scheduleConvert(immediate: true);
-                              }
-                            },
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _nameEditor,
-                      decoration: const InputDecoration(
-                        labelText: 'Name (selected image)',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (v) => _current?.name = v,
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _category,
-                    decoration: const InputDecoration(
-                      labelText: 'Category (whole batch)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text('Grid size (long edge): $_gridSize'),
-                  Slider(
-                    value: _gridSizes.indexOf(_gridSize).toDouble(),
-                    min: 0,
-                    max: (_gridSizes.length - 1).toDouble(),
-                    divisions: _gridSizes.length - 1,
-                    label: '$_gridSize',
-                    onChanged: (v) {
-                      setState(() => _gridSize = _gridSizes[v.round()]);
-                      _scheduleConvert();
-                    },
-                  ),
-                  Text('Max colors: ${_maxColors.round()}'),
-                  Slider(
-                    value: _maxColors,
-                    min: 4,
-                    max: 32,
-                    divisions: 28,
-                    label: '${_maxColors.round()}',
-                    onChanged: (v) {
-                      setState(() => _maxColors = v);
-                      _scheduleConvert();
-                    },
-                  ),
-                  Row(
-                    children: [
-                      const Text('Difficulty:'),
-                      const SizedBox(width: 12),
-                      SegmentedButton<int>(
-                        segments: const [
-                          ButtonSegment(value: 1, label: Text('1')),
-                          ButtonSegment(value: 2, label: Text('2')),
-                          ButtonSegment(value: 3, label: Text('3')),
-                        ],
-                        selected: {_difficulty},
-                        onSelectionChanged: (s) =>
-                            setState(() => _difficulty = s.first),
-                      ),
-                    ],
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Remove white background'),
-                    subtitle: const Text(
-                        'Near-white pixels become empty cells (for JPGs)'),
-                    value: _removeWhiteBg,
-                    onChanged: (v) {
-                      setState(() => _removeWhiteBg = v);
-                      _scheduleConvert();
-                    },
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Premium artwork'),
-                    value: _isPremium,
-                    onChanged: (v) => setState(() => _isPremium = v),
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Publish as draft'),
-                    subtitle: const Text(
-                        'Hidden from users until made visible in Artworks'),
-                    value: _publishAsDraft,
-                    onChanged: (v) => setState(() => _publishAsDraft = v),
-                  ),
-                  const SizedBox(height: 8),
-                  FilledButton.icon(
-                    onPressed:
-                        (_queue.isEmpty || _converting || _publishing)
-                            ? null
-                            : _publishAll,
-                    icon: const Icon(Icons.cloud_upload_rounded),
-                    label: Text(_publishing
-                        ? 'Publishing…'
-                        : _queue.length > 1
-                            ? 'Publish ${_queue.length} to ${flavor.displayName}'
-                            : 'Publish to ${flavor.displayName}'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 32),
-            // Preview column.
-            Expanded(
-              child: Column(
-                children: [
-                  if (_converting) const LinearProgressIndicator(),
-                  const SizedBox(height: 8),
-                  if (preview == null)
-                    Container(
-                      height: 360,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text('Preview appears here'),
-                    )
-                  else ...[
-                    ArtPreview(
-                      art: preview,
-                      gemStyle: flavor.gemStyle,
-                      size: 360,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '${preview.gridWidth}x${preview.gridHeight} • '
-                      '${preview.colorCount} colors • '
-                      '${preview.fillableCells} fillable cells',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _mergeFrom == null
-                          ? 'Palette — tap a color, then another, to merge them'
-                          : 'Merging color $_mergeFrom — tap the target color '
-                            '(or tap it again to cancel)',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final number
-                            in preview.colorMap.keys.toList()..sort())
-                          GestureDetector(
-                            onTap: () => _mergeColor(number),
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: preview.colorMap[number],
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  width: _mergeFrom == number ? 3 : 1,
-                                  color: _mergeFrom == number
-                                      ? Colors.black
-                                      : Colors.black26,
-                                ),
-                              ),
-                              child: Text(
-                                '$number',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: (preview.colorMap[number]!
-                                              .computeLuminance() >
-                                          0.5)
-                                      ? Colors.black
-                                      : Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
+            const Text('Difficulty:'),
+            const SizedBox(width: 12),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 1, label: Text('1')),
+                ButtonSegment(value: 2, label: Text('2')),
+                ButtonSegment(value: 3, label: Text('3')),
+              ],
+              selected: {_difficulty},
+              onSelectionChanged: (s) =>
+                  setState(() => _difficulty = s.first),
             ),
           ],
         ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Remove white background'),
+          subtitle: const Text(
+              'Near-white pixels become empty cells (for JPGs)'),
+          value: _removeWhiteBg,
+          onChanged: (v) {
+            setState(() => _removeWhiteBg = v);
+            _scheduleConvert();
+          },
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Premium artwork'),
+          value: _isPremium,
+          onChanged: (v) => setState(() => _isPremium = v),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Publish as draft'),
+          subtitle: const Text(
+              'Hidden from users until made visible in Artworks'),
+          value: _publishAsDraft,
+          onChanged: (v) => setState(() => _publishAsDraft = v),
+        ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed:
+              (_queue.isEmpty || _converting || _publishing)
+                  ? null
+                  : _publishAll,
+          icon: const Icon(Icons.cloud_upload_rounded),
+          label: Text(_publishing
+              ? 'Publishing…'
+              : _queue.length > 1
+                  ? 'Publish ${_queue.length} to ${flavor.displayName}'
+                  : 'Publish to ${flavor.displayName}'),
+        ),
+      ],
+    );
+
+    final previewColumn = Column(
+      children: [
+        if (_converting) const LinearProgressIndicator(),
+        const SizedBox(height: 8),
+        if (preview == null)
+          Container(
+            height: isMobile ? 240 : 360,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text('Preview appears here'),
+          )
+        else ...[
+          ArtPreview(
+            art: preview,
+            gemStyle: flavor.gemStyle,
+            size: isMobile ? 260 : 360,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '${preview.gridWidth}x${preview.gridHeight} • '
+            '${preview.colorCount} colors • '
+            '${preview.fillableCells} fillable cells',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _mergeFrom == null
+                ? 'Palette — tap a color, then another, to merge them'
+                : 'Merging color $_mergeFrom — tap the target color '
+                  '(or tap it again to cancel)',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final number
+                  in preview.colorMap.keys.toList()..sort())
+                GestureDetector(
+                  onTap: () => _mergeColor(number),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: preview.colorMap[number],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        width: _mergeFrom == number ? 3 : 1,
+                        color: _mergeFrom == number
+                            ? Colors.black
+                            : Colors.black26,
+                      ),
+                    ),
+                    child: Text(
+                      '$number',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: (preview.colorMap[number]!
+                                    .computeLuminance() >
+                                0.5)
+                            ? Colors.black
+                            : Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+
+    return ListView(
+      padding: EdgeInsets.all(isMobile ? 16 : 24),
+      children: [
+        Text(
+          '${flavor.displayName} — artwork creator',
+          style: isMobile
+              ? Theme.of(context).textTheme.titleLarge
+              : Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 16),
+        if (isMobile) ...[
+          previewColumn,
+          const SizedBox(height: 24),
+          controlsColumn,
+        ] else ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: controlsColumn),
+              const SizedBox(width: 32),
+              Expanded(child: previewColumn),
+            ],
+          ),
+        ],
       ],
     );
   }
+
 }

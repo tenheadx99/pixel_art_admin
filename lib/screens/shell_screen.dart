@@ -42,10 +42,29 @@ class _ShellScreenState extends State<ShellScreen> {
   Widget build(BuildContext context) {
     final state = context.watch<AdminState>();
     final flavor = state.flavor;
+    final isMobile = MediaQuery.of(context).size.width < 768;
+
+    final activeChild = KeyedSubtree(
+      key: ValueKey('${flavor.id}-$_index'),
+      child: switch (_index) {
+        0 => const DashboardScreen(),
+        1 => const ArtworkListScreen(),
+        2 => const ArtworkCreatorScreen(),
+        3 => const DailyScheduleScreen(),
+        4 => const AdsConfigScreen(),
+        5 => const EconomyScreen(),
+        6 => const AnnouncementScreen(),
+        7 => const NotificationsScreen(),
+        _ => const AppConfigScreen(),
+      },
+    );
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pixel Art Admin'),
+        title: Text(
+          isMobile ? 'Admin' : 'Pixel Art Admin',
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           DropdownButtonHideUnderline(
             child: DropdownButton<String>(
@@ -55,10 +74,14 @@ class _ShellScreenState extends State<ShellScreen> {
                   DropdownMenuItem(
                     value: f.id,
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         CircleAvatar(radius: 6, backgroundColor: f.brandColor),
                         const SizedBox(width: 8),
-                        Text('${f.displayName} (${f.id})'),
+                        Text(
+                          isMobile ? f.displayName : '${f.displayName} (${f.id})',
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   ),
@@ -68,7 +91,7 @@ class _ShellScreenState extends State<ShellScreen> {
               },
             ),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: isMobile ? 8 : 16),
           IconButton(
             tooltip: 'Sign out',
             icon: const Icon(Icons.logout_rounded),
@@ -77,40 +100,75 @@ class _ShellScreenState extends State<ShellScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: Row(
-        children: [
-          NavigationRail(
-            selectedIndex: _index,
-            labelType: NavigationRailLabelType.all,
-            onDestinationSelected: (i) => setState(() => _index = i),
-            destinations: [
-              for (final s in _sections)
-                NavigationRailDestination(
-                  icon: Icon(s.icon),
-                  label: Text(s.label),
+      drawer: isMobile
+          ? Drawer(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  DrawerHeader(
+                    decoration: BoxDecoration(
+                      color: flavor.brandColor.withAlpha(40),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 12,
+                              backgroundColor: flavor.brandColor,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              flavor.displayName,
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Pixel Art Admin',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                  for (var i = 0; i < _sections.length; i++)
+                    ListTile(
+                      leading: Icon(_sections[i].icon),
+                      title: Text(_sections[i].label),
+                      selected: _index == i,
+                      onTap: () {
+                        setState(() => _index = i);
+                        Navigator.pop(context); // Close drawer
+                      },
+                    ),
+                ],
+              ),
+            )
+          : null,
+      body: isMobile
+          ? activeChild
+          : Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _index,
+                  labelType: NavigationRailLabelType.all,
+                  onDestinationSelected: (i) => setState(() => _index = i),
+                  destinations: [
+                    for (final s in _sections)
+                      NavigationRailDestination(
+                        icon: Icon(s.icon),
+                        label: Text(s.label),
+                      ),
+                  ],
                 ),
-            ],
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            // Keyed by flavor so switching flavors re-fetches everything.
-            child: KeyedSubtree(
-              key: ValueKey('${flavor.id}-$_index'),
-              child: switch (_index) {
-                0 => const DashboardScreen(),
-                1 => const ArtworkListScreen(),
-                2 => const ArtworkCreatorScreen(),
-                3 => const DailyScheduleScreen(),
-                4 => const AdsConfigScreen(),
-                5 => const EconomyScreen(),
-                6 => const AnnouncementScreen(),
-                7 => const NotificationsScreen(),
-                _ => const AppConfigScreen(),
-              },
+                const VerticalDivider(width: 1),
+                Expanded(child: activeChild),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
+

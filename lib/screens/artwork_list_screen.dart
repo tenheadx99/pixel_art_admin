@@ -353,6 +353,8 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
   @override
   Widget build(BuildContext context) {
     final flavor = context.watch<AdminState>().flavor;
+    final isMobile = MediaQuery.of(context).size.width < 768;
+
     if (_error != null) {
       return Center(child: Text('Failed to load: $_error'));
     }
@@ -370,60 +372,75 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-          child: Row(
+          padding: EdgeInsets.fromLTRB(
+              isMobile ? 16 : 24, isMobile ? 16 : 24, isMobile ? 16 : 24, 0),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.spaceBetween,
+            crossAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 '${flavor.displayName} — artworks (${entries.length})',
-                style: Theme.of(context).textTheme.headlineSmall,
+                style: isMobile
+                    ? Theme.of(context).textTheme.titleLarge
+                    : Theme.of(context).textTheme.headlineSmall,
               ),
-              const Spacer(),
               if (_reorderMode) ...[
-                FilledButton.icon(
-                  onPressed: _orderDirty ? _saveOrder : null,
-                  icon: const Icon(Icons.save_rounded),
-                  label: const Text('Save order'),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () {
-                    setState(() {
-                      _reorderMode = false;
-                      _orderDirty = false;
-                    });
-                    _load(); // Discard unsaved moves.
-                  },
-                  child: const Text('Cancel'),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _orderDirty ? _saveOrder : null,
+                      icon: const Icon(Icons.save_rounded),
+                      label: const Text('Save order'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          _reorderMode = false;
+                          _orderDirty = false;
+                        });
+                        _load(); // Discard unsaved moves.
+                      },
+                      child: const Text('Cancel'),
+                    ),
+                  ],
                 ),
               ] else ...[
-                DropdownButton<String>(
-                  value: _categoryFilter,
-                  items: [
-                    for (final c in categories)
-                      DropdownMenuItem(value: c, child: Text(c)),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    DropdownButton<String>(
+                      value: _categoryFilter,
+                      items: [
+                        for (final c in categories)
+                          DropdownMenuItem(value: c, child: Text(c)),
+                      ],
+                      onChanged: (c) =>
+                          setState(() => _categoryFilter = c ?? 'All'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: entries.isEmpty
+                          ? null
+                          : () => setState(() => _reorderMode = true),
+                      icon: const Icon(Icons.swap_vert_rounded),
+                      label: Text(isMobile ? 'Reorder' : 'Reorder catalog'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _uploadJson,
+                      icon: const Icon(Icons.upload_file_rounded),
+                      label: const Text('Upload JSON'),
+                    ),
+                    IconButton(
+                      tooltip: 'Reload',
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
                   ],
-                  onChanged: (c) =>
-                      setState(() => _categoryFilter = c ?? 'All'),
-                ),
-                const SizedBox(width: 16),
-                OutlinedButton.icon(
-                  onPressed: entries.isEmpty
-                      ? null
-                      : () => setState(() => _reorderMode = true),
-                  icon: const Icon(Icons.swap_vert_rounded),
-                  label: const Text('Reorder'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: _uploadJson,
-                  icon: const Icon(Icons.upload_file_rounded),
-                  label: const Text('Upload JSON'),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: 'Reload',
-                  onPressed: _load,
-                  icon: const Icon(Icons.refresh_rounded),
                 ),
               ],
             ],
@@ -431,7 +448,8 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
         ),
         if (_reorderMode)
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+            padding: EdgeInsets.fromLTRB(
+                isMobile ? 16 : 24, 8, isMobile ? 16 : 24, 0),
             child: Text(
               'Drag rows into the order the app should show them, then Save.',
               style: Theme.of(context).textTheme.bodySmall,
@@ -450,7 +468,7 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
         else if (_reorderMode)
           Expanded(
             child: ReorderableListView.builder(
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.all(isMobile ? 16 : 24),
               itemCount: entries.length,
               onReorder: (oldIndex, newIndex) {
                 setState(() {
@@ -479,105 +497,184 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
         else
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.all(isMobile ? 16 : 24),
               itemCount: visible.length,
               itemBuilder: (context, i) =>
-                  _buildRow(context, visible[i], flavor.gemStyle),
+                  _buildRow(context, visible[i], flavor.gemStyle, isMobile),
             ),
           ),
       ],
     );
   }
 
-  Widget _buildRow(BuildContext context, CatalogEntry entry, bool gemStyle) {
+  Widget _buildRow(
+      BuildContext context, CatalogEntry entry, bool gemStyle, bool isMobile) {
     final art = entry.art;
     final completions = _stats[art.id] ?? 0;
     final isDraft = !entry.isBundled && !entry.remote!.visible;
 
+    final actionButtons = [
+      IconButton(
+        tooltip: entry.hidden || isDraft
+            ? 'Publish / show in app'
+            : 'Hide from app',
+        icon: Icon(entry.hidden || isDraft
+            ? Icons.visibility_off_rounded
+            : Icons.visibility_rounded),
+        onPressed: () => _toggleHidden(entry),
+      ),
+      IconButton(
+        tooltip: entry.isPremium ? 'Make free' : 'Make premium',
+        icon: Icon(
+          Icons.workspace_premium_rounded,
+          color: entry.isPremium ? Colors.amber : null,
+        ),
+        onPressed: () => _togglePremium(entry),
+      ),
+      IconButton(
+        tooltip: 'Edit category',
+        icon: const Icon(Icons.category_rounded),
+        onPressed: () => _editCategory(entry),
+      ),
+      if (!entry.isBundled) ...[
+        IconButton(
+          tooltip: 'Availability window (seasonal / limited)',
+          icon: Icon(
+            Icons.event_rounded,
+            color: art.availableUntil != null ? Colors.deepOrange : null,
+          ),
+          onPressed: () => _editAvailability(entry),
+        ),
+        IconButton(
+          tooltip: 'Delete remote artwork',
+          icon: const Icon(Icons.delete_outline_rounded),
+          onPressed: () => _deleteRemote(entry),
+        ),
+      ],
+    ];
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: ArtPreview(art: art, gemStyle: gemStyle, size: 56),
-        title: Row(
-          children: [
-            Flexible(child: Text(art.name)),
-            const SizedBox(width: 8),
-            _Badge(
-              label: entry.isBundled ? 'bundled' : 'remote',
-              color: entry.isBundled ? Colors.blueGrey : Colors.teal,
-            ),
-            if (isDraft) ...[
-              const SizedBox(width: 4),
-              const _Badge(label: 'draft', color: Colors.deepPurple),
-            ] else if (entry.hidden) ...[
-              const SizedBox(width: 4),
-              const _Badge(label: 'hidden', color: Colors.red),
-            ],
-            if (entry.isPremium) ...[
-              const SizedBox(width: 4),
-              const _Badge(label: 'premium', color: Colors.amber),
-            ],
-            if (art.availableUntil != null) ...[
-              const SizedBox(width: 4),
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: isMobile ? 4.0 : 0.0),
+        child: ListTile(
+          leading: ArtPreview(
+              art: art, gemStyle: gemStyle, size: isMobile ? 44 : 56),
+          title: Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                art.name,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
               _Badge(
-                label:
-                    'until ${art.availableUntil!.toString().split(' ').first}',
-                color: Colors.deepOrange,
+                label: entry.isBundled ? 'bundled' : 'remote',
+                color: entry.isBundled ? Colors.blueGrey : Colors.teal,
               ),
-            ],
-          ],
-        ),
-        subtitle: Text(
-          '${art.id} • ${entry.category} • '
-          '${art.gridWidth}x${art.gridHeight} • ${art.colorCount} colors • '
-          'difficulty ${art.difficulty} • '
-          '$completions completion${completions == 1 ? '' : 's'}',
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: entry.hidden || isDraft
-                  ? 'Publish / show in app'
-                  : 'Hide from app',
-              icon: Icon(entry.hidden || isDraft
-                  ? Icons.visibility_off_rounded
-                  : Icons.visibility_rounded),
-              onPressed: () => _toggleHidden(entry),
-            ),
-            IconButton(
-              tooltip: entry.isPremium ? 'Make free' : 'Make premium',
-              icon: Icon(
-                Icons.workspace_premium_rounded,
-                color: entry.isPremium ? Colors.amber : null,
-              ),
-              onPressed: () => _togglePremium(entry),
-            ),
-            IconButton(
-              tooltip: 'Edit category',
-              icon: const Icon(Icons.category_rounded),
-              onPressed: () => _editCategory(entry),
-            ),
-            if (!entry.isBundled) ...[
-              IconButton(
-                tooltip: 'Availability window (seasonal / limited)',
-                icon: Icon(
-                  Icons.event_rounded,
-                  color: art.availableUntil != null ? Colors.deepOrange : null,
+              if (isDraft)
+                const _Badge(label: 'draft', color: Colors.deepPurple)
+              else if (entry.hidden)
+                const _Badge(label: 'hidden', color: Colors.red),
+              if (entry.isPremium)
+                const _Badge(label: 'premium', color: Colors.amber),
+              if (art.availableUntil != null)
+                _Badge(
+                  label:
+                      'until ${art.availableUntil!.toString().split(' ').first}',
+                  color: Colors.deepOrange,
                 ),
-                onPressed: () => _editAvailability(entry),
-              ),
-              IconButton(
-                tooltip: 'Delete remote artwork',
-                icon: const Icon(Icons.delete_outline_rounded),
-                onPressed: () => _deleteRemote(entry),
-              ),
             ],
-          ],
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 4.0),
+            child: Text(
+              '${art.id} • ${entry.category} • '
+              '${art.gridWidth}x${art.gridHeight} • ${art.colorCount} colors • '
+              'diff ${art.difficulty} • '
+              '$completions completion${completions == 1 ? '' : 's'}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          trailing: isMobile
+              ? PopupMenuButton<int>(
+                  icon: const Icon(Icons.more_vert_rounded),
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      onTap: () => _toggleHidden(entry),
+                      child: Row(
+                        children: [
+                          Icon(entry.hidden || isDraft
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded),
+                          const SizedBox(width: 8),
+                          Text(entry.hidden || isDraft ? 'Publish' : 'Hide'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      onTap: () => _togglePremium(entry),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.workspace_premium_rounded,
+                            color: entry.isPremium ? Colors.amber : null,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(entry.isPremium ? 'Make Free' : 'Make Premium'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      onTap: () => _editCategory(entry),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.category_rounded),
+                          SizedBox(width: 8),
+                          Text('Edit Category'),
+                        ],
+                      ),
+                    ),
+                    if (!entry.isBundled) ...[
+                      PopupMenuItem(
+                        onTap: () => _editAvailability(entry),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.event_rounded,
+                              color: art.availableUntil != null
+                                  ? Colors.deepOrange
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            const Text('Availability'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        onTap: () => _deleteRemote(entry),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.delete_outline_rounded,
+                                color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Delete', style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: actionButtons,
+                ),
         ),
       ),
     );
   }
+
 }
 
 class _Badge extends StatelessWidget {
