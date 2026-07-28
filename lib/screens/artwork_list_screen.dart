@@ -12,6 +12,8 @@ import '../core/schema/remote_artwork.dart';
 import '../services/catalog_service.dart';
 import '../state/admin_state.dart';
 import '../widgets/art_preview.dart';
+import '../widgets/artwork_preview_dialog.dart';
+
 
 /// Merged bundled + remote artwork list for the selected flavor. Bundled art
 /// is edited via sparse overrides (hide / premium / category / order); remote
@@ -558,8 +560,21 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: isMobile ? 4.0 : 0.0),
         child: ListTile(
-          leading: ArtPreview(
-              art: art, gemStyle: gemStyle, size: isMobile ? 44 : 56),
+          leading: Tooltip(
+            message: 'Tap to view enlarged artwork',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => ArtworkPreviewDialog.show(
+                context,
+                art: art,
+                gemStyle: gemStyle,
+                subtitle:
+                    '${entry.isBundled ? "Bundled Catalog" : "Remote Catalog"} • ${entry.category}',
+              ),
+              child: ArtPreview(
+                  art: art, gemStyle: gemStyle, size: isMobile ? 44 : 56),
+            ),
+          ),
           title: Wrap(
             spacing: 6,
             runSpacing: 4,

@@ -1,3 +1,4 @@
+import 'dart:ui' show Rect;
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -24,15 +25,24 @@ class ConverterService {
     required String name,
     required int gridSize,
     required int maxColors,
+    Rect? cropRect,
     String category = 'General',
     int difficulty = 1,
     bool isPremium = false,
     bool removeWhiteBackground = false,
   }) {
     var source = _processor.loadImageFromBytes(bytes);
+    if (cropRect != null) {
+      final cropX = (cropRect.left * source.width).round().clamp(0, source.width - 1);
+      final cropY = (cropRect.top * source.height).round().clamp(0, source.height - 1);
+      final cropW = (cropRect.width * source.width).round().clamp(1, source.width - cropX);
+      final cropH = (cropRect.height * source.height).round().clamp(1, source.height - cropY);
+      source = img.copyCrop(source, x: cropX, y: cropY, width: cropW, height: cropH);
+    }
     if (removeWhiteBackground) {
       source = _stripWhiteBackground(source);
     }
+
     if (source.width > _maxSourceEdge || source.height > _maxSourceEdge) {
       final landscape = source.width >= source.height;
       source = img.copyResize(

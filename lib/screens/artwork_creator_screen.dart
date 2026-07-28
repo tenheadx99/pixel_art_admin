@@ -12,6 +12,8 @@ import '../services/catalog_service.dart';
 import '../services/converter_service.dart';
 import '../state/admin_state.dart';
 import '../widgets/art_preview.dart';
+import '../widgets/artwork_preview_dialog.dart';
+import '../widgets/image_crop_dialog.dart';
 
 /// Upload one or many PNGs/JPGs, tune grid size and color count with a live
 /// preview (same quantization as the app's photo importer), optionally merge
@@ -28,8 +30,9 @@ class _QueuedImage {
   final String fileName;
   final Uint8List bytes;
   String name;
+  Rect? cropRect;
 
-  _QueuedImage({required this.fileName, required this.bytes})
+  _QueuedImage({required this.fileName, required this.bytes, this.cropRect})
       : name = fileName
             .replaceAll(RegExp(r'\.[^.]+$'), '')
             .replaceAll(RegExp(r'[_-]+'), ' ');
@@ -81,10 +84,28 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
     setState(() {
       for (final file in picked.files) {
         if (file.bytes != null) {
-          _queue.add(_QueuedImage(fileName: file.name, bytes: file.bytes!));
+          _queue.add(_QueuedImage(
+            fileName: file.name,
+            bytes: file.bytes!,
+            cropRect: null,
+          ));
         }
       }
       if (_queue.isNotEmpty) _select(_queue.length - 1);
+    });
+    _scheduleConvert(immediate: true);
+  }
+
+  Future<void> _cropSelectedImage() async {
+    final item = _current;
+    if (item == null) return;
+    final cropResult = await ImageCropDialog.show(
+      context,
+      bytes: item.bytes,
+      initialCrop: item.cropRect,
+    );
+    setState(() {
+      item.cropRect = cropResult;
     });
     _scheduleConvert(immediate: true);
   }
@@ -136,6 +157,7 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
       name: item.name.isEmpty ? 'Untitled' : item.name,
       gridSize: _gridSize,
       maxColors: _maxColors.round(),
+      cropRect: item.cropRect,
       category: _category.text.trim().isEmpty ? 'General' : _category.text.trim(),
       difficulty: _difficulty,
       isPremium: _isPremium,
@@ -240,12 +262,29 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
     final controlsColumn = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        OutlinedButton.icon(
-          onPressed: _pickImages,
-          icon: const Icon(Icons.add_photo_alternate_rounded),
-          label: Text(_queue.isEmpty
-              ? 'Choose images (PNG/JPG)'
-              : 'Add more images'),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _pickImages,
+              icon: const Icon(Icons.add_photo_alternate_rounded),
+              label: Text(_queue.isEmpty
+                  ? 'Choose images (PNG/JPG)'
+                  : 'Add more images'),
+            ),
+            if (_current != null) ...[
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _cropSelectedImage,
+                icon: Icon(
+                  Icons.crop_rounded,
+                  color: _current?.cropRect != null ? Colors.amber : null,
+                ),
+                label: Text(
+                  _current?.cropRect != null ? 'Cropped' : 'Crop Image',
+                ),
+              ),
+            ],
+          ],
         ),
         if (_queue.isNotEmpty) ...[
           const SizedBox(height: 12),
@@ -255,6 +294,9 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
             children: [
               for (var i = 0; i < _queue.length; i++)
                 InputChip(
+                  avatar: _queue[i].cropRect != null
+                      ? const Icon(Icons.crop_rounded, size: 16, color: Colors.amber)
+                      : null,
                   label: Text(
                     _queue[i].name,
                     overflow: TextOverflow.ellipsis,
@@ -395,10 +437,39 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
             child: const Text('Preview appears here'),
           )
         else ...[
-          ArtPreview(
-            art: preview,
-            gemStyle: flavor.gemStyle,
-            size: isMobile ? 260 : 360,
+          Tooltip(
+            message: 'Tap to view enlarged preview',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => ArtworkPreviewDialog.show(
+                context,
+                art: preview,
+                gemStyle: flavor.gemStyle,
+                subtitle: 'Live Conversion Preview',
+              ),
+              child: Stack(
+                children: [
+                  ArtPreview(
+                    art: preview,
+                    gemStyle: flavor.gemStyle,
+                    size: isMobile ? 260 : 360,
+                  ),
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.zoom_in_rounded,
+                          color: Colors.white, size: 20),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           Text(
@@ -407,6 +478,7 @@ class _ArtworkCreatorScreenState extends State<ArtworkCreatorScreen> {
             '${preview.fillableCells} fillable cells',
             style: Theme.of(context).textTheme.bodySmall,
           ),
+
           const SizedBox(height: 12),
           Text(
             _mergeFrom == null
