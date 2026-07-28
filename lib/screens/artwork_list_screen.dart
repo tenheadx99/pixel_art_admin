@@ -452,7 +452,9 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
         const SnackBar(content: Text('Order saved')),
       );
     }
-   @override
+  }
+
+  @override
   Widget build(BuildContext context) {
     final flavor = context.watch<AdminState>().flavor;
     final isMobile = MediaQuery.of(context).size.width < 768;
