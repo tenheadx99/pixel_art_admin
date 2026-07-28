@@ -378,7 +378,7 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
             spacing: 12,
             runSpacing: 12,
             alignment: WrapAlignment.spaceBetween,
-            crossAlignment: WrapCrossAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 '${flavor.displayName} — artworks (${entries.length})',
@@ -563,7 +563,7 @@ class _ArtworkListScreenState extends State<ArtworkListScreen> {
           title: Wrap(
             spacing: 6,
             runSpacing: 4,
-            crossAlignment: WrapCrossAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 art.name,
