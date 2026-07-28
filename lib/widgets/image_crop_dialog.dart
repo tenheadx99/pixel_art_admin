@@ -40,7 +40,7 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
   double _width = 1.0;
   double _height = 1.0;
 
-  String _selectedAspect = 'Free'; // 'Free', '1:1', '4:3', '16:9'
+  String _selectedAspect = '1:1'; // Default to 1:1 Square
 
   @override
   void initState() {
@@ -50,6 +50,8 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
       _top = widget.initialCrop!.top.clamp(0.0, 0.9);
       _width = widget.initialCrop!.width.clamp(0.1, 1.0 - _left);
       _height = widget.initialCrop!.height.clamp(0.1, 1.0 - _top);
+    } else {
+      _applyAspectRatio('1:1');
     }
   }
 

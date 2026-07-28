@@ -62,14 +62,22 @@ class ConverterService {
       );
     }
 
-    // Preserve aspect ratio: the long edge gets gridSize cells.
-    final landscape = source.width >= source.height;
-    final gridWidth = landscape
-        ? gridSize
-        : (gridSize * source.width / source.height).round().clamp(1, gridSize);
-    final gridHeight = landscape
-        ? (gridSize * source.height / source.width).round().clamp(1, gridSize)
-        : gridSize;
+    // Enforce 1:1 square aspect ratio: center-crop non-square source images.
+    if (source.width != source.height) {
+      final squareSize = source.width < source.height ? source.width : source.height;
+      final cropX = (source.width - squareSize) ~/ 2;
+      final cropY = (source.height - squareSize) ~/ 2;
+      source = img.copyCrop(
+        source,
+        x: cropX,
+        y: cropY,
+        width: squareSize,
+        height: squareSize,
+      );
+    }
+
+    final gridWidth = gridSize;
+    final gridHeight = gridSize;
 
     final scaled = _processor.downscaleToGrid(source, gridWidth, gridHeight);
     final quantized = _processor.quantizeColors(scaled, maxColors);
